@@ -1,13 +1,362 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>在線生產看板</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>線上生產看板</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+      --accent: #1f6feb;
+      --border: #d0d7de;
+      --surface: #f6f8fa;
+    }
+
+    body {
+      margin: 0;
+      background: var(--surface);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--accent);
+      color: #fff;
+      padding: 1.5rem 2rem;
+      text-align: center;
+    }
+
+    main {
+      flex: 1;
+      padding: 2rem 1rem 3rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.75rem, 2.8vw, 2.5rem);
+      letter-spacing: 0.06em;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 12px 24px rgba(31, 111, 235, 0.1);
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      font-weight: 600;
+      color: #333;
+      gap: 0.4rem;
+      font-size: 0.95rem;
+    }
+
+    select, button, input[type="text"] {
+      padding: 0.65rem 0.75rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-size: 1rem;
+      transition: border 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    select:focus, button:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.15);
+    }
+
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: progress;
+    }
+
+    .results-card {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    th, td {
+      padding: 0.85rem 0.75rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: rgba(31, 111, 235, 0.1);
+      color: #0a3069;
+      font-size: 0.95rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    tbody tr:hover {
+      background: rgba(31, 111, 235, 0.06);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      color: #444;
+    }
+
+    .status span {
+      font-weight: 600;
+      color: #0a3069;
+    }
+
+    .error {
+      color: #d93025;
+      margin-top: 0.75rem;
+      font-weight: 600;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.85rem;
+      color: #666;
+    }
+
+    @media (max-width: 720px) {
+      main {
+        padding: 1.5rem 1rem;
+      }
+
+      table {
+        min-width: auto;
+        font-size: 0.9rem;
+      }
+
+      th, td {
+        padding: 0.6rem 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>線上生產看板</h1>
+  </header>
+  <main>
+    <section class="card">
+      <form id="filters" class="form-grid">
+        <label>
+          API 位址
+          <input id="apiBase" name="apiBase" type="text" value="http://localhost:5000" placeholder="http://伺服器位址" />
+        </label>
+        <label>
+          廠區
+          <select id="plant" name="plant" required>
+            <option value="ZH">珠海 (ZH)</option>
+            <option value="VN">越南 (VN)</option>
+            <option value="TC">太倉 (TC)</option>
+          </select>
+        </label>
+        <label>
+          部 (1-6)
+          <select id="division" name="division" required></select>
+        </label>
+        <label>
+          課 (1-4)
+          <select id="section" name="section" required></select>
+        </label>
+        <label>
+          班 (1-10)
+          <select id="classNumber" name="classNumber" required></select>
+        </label>
+        <div style="display: flex; align-items: flex-end;">
+          <button id="load" type="submit">載入資料</button>
+        </div>
+      </form>
+      <div class="status" id="status" hidden>
+        <span id="statusText"></span>
+      </div>
+      <div class="error" id="error" hidden></div>
+    </section>
+
+    <section class="card results-card" id="results" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>部門代碼</th>
+            <th>部門名稱</th>
+            <th>在線人數</th>
+            <th>應出席</th>
+            <th>實際出席</th>
+            <th>借入</th>
+            <th>借出</th>
+            <th>請假</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </section>
+  </main>
+  <footer>
+    © <span id="year"></span> 線上生產看板
+  </footer>
+
+  <script>
+    const divisionSelect = document.getElementById('division');
+    const sectionSelect = document.getElementById('section');
+    const classSelect = document.getElementById('classNumber');
+    const statusContainer = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const errorContainer = document.getElementById('error');
+    const resultsSection = document.getElementById('results');
+    const resultsBody = document.getElementById('resultsBody');
+    const loadButton = document.getElementById('load');
+    const filtersForm = document.getElementById('filters');
+    const apiBaseInput = document.getElementById('apiBase');
+    const currentOrigin = window.location.origin;
+
+    if (currentOrigin && currentOrigin !== 'null' && currentOrigin !== 'file://') {
+      apiBaseInput.value = currentOrigin;
+    }
+
+    const rangeOptions = (max) => Array.from({ length: max }, (_, idx) => idx + 1);
+
+    function fillSelect(select, max) {
+      select.innerHTML = '';
+      rangeOptions(max).forEach((value) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+    }
+
+    function setLoading(isLoading, message = '資料載入中…') {
+      loadButton.disabled = isLoading;
+      statusText.textContent = message;
+      statusContainer.hidden = !isLoading;
+    }
+
+    function showError(message) {
+      errorContainer.textContent = message;
+      errorContainer.hidden = !message;
+    }
+
+    function renderResults(records) {
+      resultsBody.innerHTML = '';
+
+      if (!records.length) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 8;
+        cell.textContent = '目前沒有符合條件的資料。';
+        row.appendChild(cell);
+        resultsBody.appendChild(row);
+        resultsSection.hidden = false;
+        return;
+      }
+
+      records.forEach((record) => {
+        const row = document.createElement('tr');
+        const cells = [
+          record.departmentCode,
+          record.departmentName || '—',
+          record.onlineCount,
+          record.expectedAttendance,
+          record.actualAttendance,
+          record.borrowedCount,
+          record.lentCount,
+          record.leaveCount,
+        ];
+
+        cells.forEach((value) => {
+          const cell = document.createElement('td');
+          cell.textContent = value;
+          row.appendChild(cell);
+        });
+
+        resultsBody.appendChild(row);
+      });
+
+      resultsSection.hidden = false;
+    }
+
+    function resolveEndpoint() {
+      const defaultBase = 'http://localhost:5000';
+      const base = (apiBaseInput.value || defaultBase).trim() || defaultBase;
+      const normalized = base.replace(/\/+$/, '');
+      return `${normalized}/api/ProductionBoard`;
+    }
+
+    async function fetchBoardData(params) {
+      const query = new URLSearchParams(params);
+      const url = resolveEndpoint();
+      try {
+        const response = await fetch(`${url}?${query.toString()}`);
+        if (!response.ok) {
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const body = await response.json();
+            throw new Error(body.title || body.detail || '資料載入失敗');
+          }
+          throw new Error('資料載入失敗');
+        }
+        return await response.json();
+      } catch (error) {
+        throw error instanceof Error ? error : new Error('資料載入失敗');
+      }
+    }
+
+    filtersForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showError('');
+      resultsSection.hidden = true;
+
+      const plant = document.getElementById('plant').value;
+      const division = divisionSelect.value;
+      const section = sectionSelect.value;
+      const classNumber = classSelect.value;
+
+      setLoading(true);
+      try {
+        const records = await fetchBoardData({ plant, division, section, classNumber });
+        renderResults(records);
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    fillSelect(divisionSelect, 6);
+    fillSelect(sectionSelect, 4);
+    fillSelect(classSelect, 10);
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
 </html>
